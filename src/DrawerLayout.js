@@ -22,6 +22,7 @@ const SETTLING = 'Settling';
 
 export type PropType = {
   children: any,
+  //comment: this is my new props
   drawerType?: 'overlay' | 'push-screen',
   drawerBackgroundColor?: string,
   drawerLockMode?: 'unlocked' | 'locked-closed' | 'locked-open',
@@ -134,6 +135,7 @@ export default class DrawerLayout extends Component {
       drawerBackgroundColor,
       drawerWidth,
       drawerPosition,
+      //comment: here I get its value (pretty obvious)
       drawerType,
     } = this.props;
 
@@ -173,6 +175,7 @@ export default class DrawerLayout extends Component {
     const animatedDrawerStyles = {
       transform: [{ translateX: drawerTranslateX }],
     };
+    //comment: main magic "subscribe" to drawer's movement
     const animatedMainStyles = {
       transform: [{ translateX: mainViewTranslateX }],
     };
@@ -182,6 +185,14 @@ export default class DrawerLayout extends Component {
       outputRange: [0, 0.7],
       extrapolate: 'clamp',
     });
+    //comment: disable bluring if we are using pushing content
+    //(just my honest oppinion you may safely remove this check and writelike so
+  // const animatedOverlayStyles = {
+  //   opacity: overlayOpacity,
+  // };
+//
+//
+//)
     const animatedOverlayStyles = {
       opacity: drawerType === 'push-screen' ? 0 : overlayOpacity,
     };
@@ -195,6 +206,7 @@ export default class DrawerLayout extends Component {
         <Animated.View
           style={[
             styles.main,
+            //comment: just push main view with the drawer
             drawerType === 'push-screen' && animatedMainStyles,
           ]}
         >
