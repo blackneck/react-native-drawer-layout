@@ -23,7 +23,8 @@ const SETTLING = 'Settling';
 export type PropType = {
   children: any,
   //comment: this is my new props
-  drawerType?: 'overlay' | 'push-screen',
+  drawerType?: 'overlay' | 'push-screen' | 'responsive',
+  drawerResponsiveWidth?: number,
   drawerBackgroundColor?: string,
   drawerLockMode?: 'unlocked' | 'locked-closed' | 'locked-open',
   drawerPosition: 'left' | 'right',
@@ -42,6 +43,7 @@ export type StateType = {
   accessibilityViewIsModal: boolean,
   drawerShown: boolean,
   openValue: any,
+  isWide: boolean,
 };
 
 export type EventType = {
@@ -82,12 +84,24 @@ export default class DrawerLayout extends Component {
 
   constructor(props: PropType, context: any) {
     super(props, context);
-
+    const isWide = Dimensions.get('window').width > props.drawerResponsiveWidth;
+    const responsive = props.drawerType === 'responsive';
     this.state = {
       accessibilityViewIsModal: false,
-      drawerShown: false,
-      openValue: new Animated.Value(0),
+      drawerShown: isWide && responsive,
+      openValue: new Animated.Value(isWide && responsive ? 1 : 0),
+      isWide,
     };
+    Dimensions.addEventListener('change', () => {
+      const isWide = Dimensions.get('window').width >
+        props.drawerResponsiveWidth;
+      const responsive = props.drawerType === 'responsive';
+      this.setState(() => ({
+        drawerShown: isWide && responsive,
+        openValue: new Animated.Value(isWide && responsive ? 1 : 0),
+        isWide,
+      }));
+    });
   }
 
   getDrawerPosition() {
@@ -129,7 +143,12 @@ export default class DrawerLayout extends Component {
   }
 
   render() {
-    const { accessibilityViewIsModal, drawerShown, openValue } = this.state;
+    const {
+      accessibilityViewIsModal,
+      drawerShown,
+      openValue,
+      isWide,
+    } = this.state;
 
     const {
       drawerBackgroundColor,
@@ -139,15 +158,32 @@ export default class DrawerLayout extends Component {
       drawerType,
     } = this.props;
 
+    const overlay = drawerType === 'overlay';
+    // if drawerType === responsive AND isWide
+    // - show the drawer by default
+    // TODO override drawerLockMode = locked-open
+    // - squish the content (flex display)
+    // if drawerType === responsive AND NOT isWide
+    // OR drawerType === push-screen
+    // - hide the drawer by default
+    // XXX restore drawerLockMode
+    // - push content on openDrawer (transform: translateX)
+
+    const responsive = drawerType === 'responsive';
+    const squish = responsive && isWide;
+    const push = drawerType === 'push-screen' || (responsive && !isWide);
+
+    const left = drawerPosition === 'left';
+    const right = drawerPosition === 'right';
     /**
-    * We need to use the "original" drawer position here
-    * as RTL turns position left and right on its own
-    **/
+     * We need to use the "original" drawer position here
+     * as RTL turns position left and right on its own
+     **/
     const dynamicDrawerStyles = {
       backgroundColor: drawerBackgroundColor,
       width: drawerWidth,
-      left: drawerPosition === 'left' ? 0 : null,
-      right: drawerPosition === 'right' ? 0 : null,
+      left: left ? 0 : null,
+      right: right ? 0 : null,
     };
 
     /* Drawer styles */
@@ -187,46 +223,69 @@ export default class DrawerLayout extends Component {
     });
     //comment: disable bluring if we are using pushing content
     //(just my honest oppinion you may safely remove this check and writelike so
-  // const animatedOverlayStyles = {
-  //   opacity: overlayOpacity,
-  // };
-//
-//
-//)
+    // const animatedOverlayStyles = {
+    //   opacity: overlayOpacity,
+    // };
+    //
+    //
+    //)
     const animatedOverlayStyles = {
-      opacity: drawerType === 'push-screen' ? 0 : overlayOpacity,
+      opacity: push ? 0 : overlayOpacity,
     };
     const pointerEvents = drawerShown ? 'auto' : 'none';
 
     return (
       <View
-        style={{ flex: 1, backgroundColor: 'transparent' }}
+        style={[
+          squish && styles.squish,
+          { flex: 1, backgroundColor: 'transparent' },
+        ]}
         {...this._panResponder.panHandlers}
       >
+        {drawerShown &&
+          squish &&
+          left &&
+          <Animated.View
+            accessibilityViewIsModal={accessibilityViewIsModal}
+            style={[
+              !squish && styles.drawer,
+              dynamicDrawerStyles,
+              animatedDrawerStyles,
+            ]}
+          >
+            {this.props.renderNavigationView()}
+          </Animated.View>}
         <Animated.View
           style={[
             styles.main,
             //comment: just push main view with the drawer
-            drawerType === 'push-screen' && animatedMainStyles,
+            push && animatedMainStyles,
+            squish && { flex: 2 },
           ]}
         >
           {this.props.children}
         </Animated.View>
-        <TouchableWithoutFeedback
-          pointerEvents={pointerEvents}
-          onPress={this._onOverlayClick}
-        >
-          <Animated.View
+        {!squish &&
+          <TouchableWithoutFeedback
             pointerEvents={pointerEvents}
-            style={[styles.overlay, animatedOverlayStyles]}
-          />
-        </TouchableWithoutFeedback>
-        <Animated.View
-          accessibilityViewIsModal={accessibilityViewIsModal}
-          style={[styles.drawer, dynamicDrawerStyles, animatedDrawerStyles]}
-        >
-          {this.props.renderNavigationView()}
-        </Animated.View>
+            onPress={this._onOverlayClick}
+          >
+            <Animated.View
+              pointerEvents={pointerEvents}
+              style={[styles.overlay, animatedOverlayStyles]}
+            />
+          </TouchableWithoutFeedback>}
+        {(!squish || (drawerShown && right)) &&
+          <Animated.View
+            accessibilityViewIsModal={accessibilityViewIsModal}
+            style={[
+              !squish && styles.drawer,
+              dynamicDrawerStyles,
+              animatedDrawerStyles,
+            ]}
+          >
+            {this.props.renderNavigationView()}
+          </Animated.View>}
       </View>
     );
   }
@@ -433,6 +492,9 @@ export default class DrawerLayout extends Component {
 }
 
 const styles = StyleSheet.create({
+  squish: {
+    flexDirection: 'row',
+  },
   drawer: {
     position: 'absolute',
     top: 0,
