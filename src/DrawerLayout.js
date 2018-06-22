@@ -87,21 +87,11 @@ export default class DrawerLayout extends Component {
     const isWide = Dimensions.get('window').width > props.drawerResponsiveWidth;
     const responsive = props.drawerType === 'responsive';
     this.state = {
-      accessibilityViewIsModal: false,
+      accessibilityViewIsModal: isWide && responsive,
       drawerShown: isWide && responsive,
       openValue: new Animated.Value(isWide && responsive ? 1 : 0),
       isWide,
     };
-    Dimensions.addEventListener('change', () => {
-      const isWide = Dimensions.get('window').width >
-        props.drawerResponsiveWidth;
-      const responsive = props.drawerType === 'responsive';
-      this.setState(() => ({
-        drawerShown: isWide && responsive,
-        openValue: new Animated.Value(isWide && responsive ? 1 : 0),
-        isWide,
-      }));
-    });
   }
 
   getDrawerPosition() {
@@ -140,6 +130,49 @@ export default class DrawerLayout extends Component {
       onPanResponderRelease: this._panResponderRelease,
       onPanResponderTerminate: () => {},
     });
+
+    Dimensions.addEventListener('change', () => {
+      const { drawerResponsiveWidth, drawerType } = this.props;
+      const isWide = Dimensions.get('window').width > drawerResponsiveWidth;
+      const responsive = drawerType === 'responsive';
+      this.setState(() => ({
+        isWide,
+      }));
+    });
+  }
+
+  componentDidUpdate(prevProps: PropType, prevState: StateType) {
+    const { drawerType } = this.props;
+    // We only deal with the responsive mode here
+    if (drawerType === 'responsive') {
+      const { isWide: wasWide, drawerShown: wasShown } = prevState;
+      const { isWide } = this.state;
+      const nowWide = !wasWide && isWide;
+      const nowNotWide = wasWide && !isWide;
+      // if the screen is now wide enough to dock
+      // open the drawer without onDrawerOpen callback
+      if (nowWide && !wasShown) {
+        this._openDrawer();
+        return;
+      }
+      // if the screen is now wide enough to dock but was already open
+      // step 1: close the drawer with all callbacks fired
+      if (nowWide && wasShown) {
+        this.closeDrawer();
+        return;
+      }
+      // step 2: open again in the next state cycle without onDrawerOpen callback
+      if (isWide && !wasShown) {
+        this._openDrawer();
+        return;
+      }
+      // if the screen went
+      // close the drawer with all callbacks fired
+      if (nowNotWide && wasShown) {
+        this.closeDrawer();
+        return;
+      }
+    }
   }
 
   render() {
@@ -158,7 +191,6 @@ export default class DrawerLayout extends Component {
       drawerType,
     } = this.props;
 
-    const overlay = drawerType === 'overlay';
     // if drawerType === responsive AND isWide
     // - show the drawer by default
     // TODO override drawerLockMode = locked-open
@@ -166,9 +198,10 @@ export default class DrawerLayout extends Component {
     // if drawerType === responsive AND NOT isWide
     // OR drawerType === push-screen
     // - hide the drawer by default
-    // XXX restore drawerLockMode
+    // ? restore drawerLockMode
     // - push content on openDrawer (transform: translateX)
 
+    const overlay = drawerType === 'overlay';
     const responsive = drawerType === 'responsive';
     const squish = responsive && isWide;
     const push = drawerType === 'push-screen' || (responsive && !isWide);
@@ -303,7 +336,8 @@ export default class DrawerLayout extends Component {
     }
   };
 
-  openDrawer = (options: DrawerMovementOptionType = {}) => {
+  _openDrawer = (options: DrawerMovementOptionType = {}, callback: any) => {
+    callback = callback ? callback : () => this._emitStateChanged(IDLE);
     this._emitStateChanged(SETTLING);
     Animated.spring(this.state.openValue, {
         toValue: 1,
@@ -312,15 +346,20 @@ export default class DrawerLayout extends Component {
         useNativeDriver: this.props.useNativeAnimations,
         ...options,
       })
-      .start(() => {
-        if (this.props.onDrawerOpen) {
-          this.props.onDrawerOpen();
-        }
-        this._emitStateChanged(IDLE);
-      });
+      .start(callback);
   };
 
-  closeDrawer = (options: DrawerMovementOptionType = {}) => {
+  openDrawer = (options: DrawerMovementOptionType = {}) => {
+    this._openDrawer(options, () => {
+      if (this.props.onDrawerOpen) {
+        this.props.onDrawerOpen();
+      }
+      this._emitStateChanged(IDLE);
+    });
+  };
+
+  _closeDrawer = (options: DrawerMovementOptionType = {}, callback: any) => {
+    callback = callback ? callback : () => this._emitStateChanged(IDLE);
     this._emitStateChanged(SETTLING);
     Animated.spring(this.state.openValue, {
         toValue: 0,
@@ -329,12 +368,17 @@ export default class DrawerLayout extends Component {
         useNativeDriver: this.props.useNativeAnimations,
         ...options,
       })
-      .start(() => {
-        if (this.props.onDrawerClose) {
-          this.props.onDrawerClose();
-        }
-        this._emitStateChanged(IDLE);
-      });
+      .start(callback);
+  };
+
+  closeDrawer = (options: DrawerMovementOptionType = {}) => {
+    this._emitStateChanged(SETTLING);
+    this._closeDrawer(options, () => {
+      if (this.props.onDrawerClose) {
+        this.props.onDrawerClose();
+      }
+      this._emitStateChanged(IDLE);
+    });
   };
 
   _handleDrawerOpen = () => {
